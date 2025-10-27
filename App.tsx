@@ -4,7 +4,7 @@ import { AppContextProvider, useAuth, useData, useTheme, useFilters } from './co
 import { useTranslation } from './i18n';
 import type { Customer, Payment, Area, DuePayment, Bill } from './types';
 import { ConnectionStatus, BillStatus } from './types';
-import { AddUserIcon, ArrowLeftIcon, Button, Card, CustomersIcon, Header, HomeIcon, Input, Modal, ReportIcon, SettingsIcon, BottomNav, PencilIcon, TrashIcon, CalculatorIcon, Calculator, MapPinIcon, SearchIcon, Select, UserIcon, CameraIcon, BellIcon, CurrencyDollarIcon, ExclamationCircleIcon, DishIcon, ConfirmModal, CalendarIcon, StarIcon } from './components';
+import { AddUserIcon, ArrowLeftIcon, Button, Card, CustomersIcon, Header, HomeIcon, Input, Modal, ReportIcon, SettingsIcon, BottomNav, PencilIcon, TrashIcon, CalculatorIcon, Calculator, MapPinIcon, SearchIcon, Select, UserIcon, CameraIcon, BellIcon, CurrencyDollarIcon, ExclamationCircleIcon, DishIcon, ConfirmModal, CalendarIcon, StarIcon, TelegramIcon } from './components';
 
 // --- UTILITY HOOK for Subscription Logic ---
 const useSubscriptionStatus = () => {
@@ -929,11 +929,9 @@ const CustomerDetailScreen: React.FC = () => {
                 isOpen={!!deletingDuePayment}
                 onClose={() => setDeletingDuePayment(null)}
                 onConfirm={handleDuePaymentDeleteConfirm}
-                // FIX: Use the correct translation key for the modal title.
                 title={t('confirmDeleteDuePaymentTitle')}
                 isLoading={isLoading}
              >
-                {/* FIX: Corrected typo from `deletingDuepayment` to `deletingDuePayment`. */}
                 <p>{t('confirmDeleteDuePaymentMessage', { amount: deletingDuePayment?.amount.toFixed(2) || '' })}</p>
              </ConfirmModal>
              
@@ -967,32 +965,49 @@ const CollectBillModal: React.FC<{isOpen: boolean, onClose: () => void, customer
     const [isLoading, setIsLoading] = useState(false);
     
     const unpaidBills = useMemo(() => 
-        getBillsByCustomerId(customer.id).filter(b => b.status === BillStatus.UNPAID),
+        getBillsByCustomerId(customer.id)
+            .filter(b => b.status === BillStatus.UNPAID)
+            .sort((a, b) => a.year - b.year || a.month - a.month), // Sort oldest first
     [getBillsByCustomerId, customer.id]);
 
-    const [selectedBillIds, setSelectedBillIds] = useState<string[]>([]);
+    const [selectedBills, setSelectedBills] = useState<Record<string, number>>({});
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
 
     useEffect(() => {
         if(isOpen) {
-            setSelectedBillIds([]);
+            setSelectedBills({});
             setDate(new Date().toISOString().split('T')[0]);
             setIsLoading(false);
         }
     }, [isOpen]);
 
-    const handleSelectBill = (billId: string) => {
-        setSelectedBillIds(prev => 
-            prev.includes(billId) ? prev.filter(id => id !== billId) : [...prev, billId]
-        );
+    const handleToggleBillSelection = (bill: Bill) => {
+        setSelectedBills(prev => {
+            const newSelection = { ...prev };
+            if (newSelection.hasOwnProperty(bill.id)) {
+                delete newSelection[bill.id];
+            } else {
+                newSelection[bill.id] = bill.amount;
+            }
+            return newSelection;
+        });
+    };
+    
+    const handleAmountChange = (billId: string, value: string, maxAmount: number) => {
+        const amount = parseFloat(value);
+        if (value === '') {
+            setSelectedBills(prev => ({ ...prev, [billId]: 0 }));
+            return;
+        }
+        if (!isNaN(amount) && amount >= 0 && amount <= maxAmount) {
+            setSelectedBills(prev => ({ ...prev, [billId]: amount }));
+        }
     };
 
     const totalSelectedAmount = useMemo(() => {
-        return selectedBillIds.reduce((total, id) => {
-            const bill = unpaidBills.find(b => b.id === id);
-            return total + (bill ? bill.amount : 0);
-        }, 0);
-    }, [selectedBillIds, unpaidBills]);
+        // FIX: Add explicit types to the reduce function to avoid potential type inference issues.
+        return Object.values(selectedBills).reduce((total: number, amount: number) => total + amount, 0);
+    }, [selectedBills]);
 
     const getMonthName = (monthNumber: number) => {
         const date = new Date();
@@ -1002,7 +1017,7 @@ const CollectBillModal: React.FC<{isOpen: boolean, onClose: () => void, customer
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (selectedBillIds.length === 0) return;
+        if (Object.keys(selectedBills).length === 0) return;
 
         setIsLoading(true);
         const paymentDate = new Date(date);
@@ -1010,8 +1025,8 @@ const CollectBillModal: React.FC<{isOpen: boolean, onClose: () => void, customer
             customerId: customer.id,
             amount: totalSelectedAmount,
             date: paymentDate.toISOString(),
-            notes: `Paid for ${selectedBillIds.length} bill(s).`
-        }, selectedBillIds);
+            notes: `Paid for ${Object.keys(selectedBills).length} bill(s).`
+        }, selectedBills);
         setIsLoading(false);
 
         if(result.success) {
@@ -1030,18 +1045,27 @@ const CollectBillModal: React.FC<{isOpen: boolean, onClose: () => void, customer
                 <div className="max-h-60 overflow-y-auto space-y-2 p-2 border rounded-md dark:border-gray-600">
                     {unpaidBills.length > 0 ? (
                         unpaidBills.map(bill => (
-                            <label key={bill.id} className="flex items-center justify-between p-2 rounded-md bg-gray-50 dark:bg-gray-700 cursor-pointer">
-                                <div>
+                            <div key={bill.id} className="flex items-center justify-between p-2 rounded-md bg-gray-50 dark:bg-gray-700">
+                                <div className="flex items-center gap-2">
                                     <span className="font-medium">{getMonthName(bill.month)} {bill.year}</span>
-                                    <span className="ml-4 text-gray-600 dark:text-gray-300">{bill.amount.toFixed(2)}</span>
+                                    <input
+                                        type="number"
+                                        value={selectedBills[bill.id] ?? bill.amount}
+                                        onChange={(e) => handleAmountChange(bill.id, e.target.value, bill.amount)}
+                                        disabled={!selectedBills.hasOwnProperty(bill.id)}
+                                        className="w-24 p-1 border rounded text-right bg-white dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-200 disabled:text-gray-500 dark:disabled:bg-gray-800"
+                                        step="0.01"
+                                        min="0"
+                                        max={bill.amount}
+                                    />
                                 </div>
                                 <input
                                     type="checkbox"
-                                    checked={selectedBillIds.includes(bill.id)}
-                                    onChange={() => handleSelectBill(bill.id)}
+                                    checked={selectedBills.hasOwnProperty(bill.id)}
+                                    onChange={() => handleToggleBillSelection(bill)}
                                     className="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                                 />
-                            </label>
+                            </div>
                         ))
                     ) : (
                         <p className="text-center text-gray-500 dark:text-gray-400 py-4">{t('noUnpaidBills')}</p>
@@ -1053,7 +1077,7 @@ const CollectBillModal: React.FC<{isOpen: boolean, onClose: () => void, customer
                 </div>
 
                 <Input id="payment-date" label={t('paymentDate')} type="date" value={date} onChange={e => setDate(e.target.value)} required />
-                <Button type="submit" disabled={selectedBillIds.length === 0} isLoading={isLoading}>{t('submitPayment')}</Button>
+                <Button type="submit" disabled={Object.keys(selectedBills).length === 0} isLoading={isLoading}>{t('submitPayment')}</Button>
             </form>
         </Modal>
     );
@@ -1533,7 +1557,6 @@ const SettingsScreen: React.FC = () => {
     const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState(false);
     const [isEditProfileModalOpen, setIsEditProfileModalOpen] = useState(false);
     const { status, trialDaysLeft } = useSubscriptionStatus();
-    const whatsAppRawNumber = "8801944037444";
 
 
     const handleLogout = () => {
@@ -1624,12 +1647,13 @@ const SettingsScreen: React.FC = () => {
                     <p>{t('contactMe')}</p>
                     <p className="font-semibold">
                          <a 
-                            href={`https://wa.me/${whatsAppRawNumber}`}
+                            href="https://t.me/Ytdecoderpro"
                             target="_blank" 
                             rel="noopener noreferrer"
-                            className="text-indigo-600 dark:text-indigo-400 hover:underline"
+                            className="text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center justify-center space-x-2"
                         >
-                            {t('whatsappLabel')}: {t('whatsappNumber')}
+                            <TelegramIcon className="w-5 h-5" />
+                            <span>{t('telegramLabel')}</span>
                         </a>
                     </p>
                 </Card>

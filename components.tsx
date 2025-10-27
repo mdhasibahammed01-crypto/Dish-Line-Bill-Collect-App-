@@ -146,6 +146,12 @@ export const EyeOffIcon = ({ className }: { className?: string }) => (
     </svg>
 );
 
+export const TelegramIcon = ({ className }: { className?: string }) => (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={`w-6 h-6 ${className}`}>
+        <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.08l16.2-6.16c.76-.29 1.45.14 1.25.94l-2.86 13.65c-.17.75-.67 1.01-1.37.64l-4.39-3.24-2.07 2.02c-.2.2-.37.37-.7.37l.28-4.23z"></path>
+    </svg>
+);
+
 
 // Common Components
 export const Spinner = ({ className }: { className?: string }) => (
@@ -354,15 +360,32 @@ export const Calculator: React.FC = () => {
         if (val === 'C') {
             setDisplay('');
         } else if (val === '=') {
+            if (display.trim() === '') {
+                return; // Do nothing if display is empty
+            }
             try {
                 // Using a Function constructor for safer evaluation than direct eval()
-                const result = new Function('return ' + display.replace(/×/g, '*').replace(/÷/g, '/'))();
-                setDisplay(String(result));
+                // Explicitly type result as unknown for type safety
+                const result: unknown = new Function(
+                    'return ' + display.replace(/×/g, '*').replace(/÷/g, '/')
+                )();
+                
+                // Check if result is a finite number before setting display
+                if (typeof result === 'number' && isFinite(result)) {
+                    setDisplay(String(result));
+                } else {
+                    setDisplay('Error');
+                }
             } catch (error) {
                 setDisplay('Error');
             }
         } else {
-            setDisplay(prev => prev + val);
+            // If current display is an error, start new input
+            if (display === 'Error') {
+                setDisplay(val);
+            } else {
+                setDisplay(prev => prev + val);
+            }
         }
     };
     

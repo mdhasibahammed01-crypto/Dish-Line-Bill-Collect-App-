@@ -277,7 +277,7 @@ interface DataContextType {
     updateCustomer: (customer: Customer) => Promise<MutationResult>;
     deleteCustomer: (customerId: string) => Promise<MutationResult>;
     getCustomerById: (id: string) => Customer | undefined;
-    addPayment: (payment: Omit<Payment, 'id'>, billIdsToUpdate: string[]) => Promise<MutationResult>;
+    addPayment: (payment: Omit<Payment, 'id'>, billsToPay: Record<string, number>) => Promise<MutationResult>;
     deletePayment: (paymentId: string) => Promise<MutationResult>;
     getPaymentsByCustomerId: (customerId: string) => Payment[];
     addArea: (name: string) => Promise<MutationResult>;
@@ -473,24 +473,51 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, [userId, bills]);
 
 
-    const addPayment = useCallback(async (paymentData: Omit<Payment, 'id'>, billIdsToUpdate: string[]): Promise<MutationResult> => {
+    const addPayment = useCallback(async (paymentData: Omit<Payment, 'id'>, billsToPay: Record<string, number>): Promise<MutationResult> => {
         if(!userId) return { success: false, message: "User not authenticated." };
         try {
-            const paymentCollection = collection(db, 'users', userId, 'payments');
-            const paymentRef = await addDoc(paymentCollection, paymentData);
-
             const batch = writeBatch(db);
-            billIdsToUpdate.forEach(billId => {
+            const paymentCollection = collection(db, 'users', userId, 'payments');
+            const paymentRef = doc(paymentCollection); // Get ref with new ID
+            batch.set(paymentRef, paymentData);
+
+            const customerRef = doc(db, 'users', userId, 'customers', paymentData.customerId);
+            const customerSnap = await getDoc(customerRef);
+            if (!customerSnap.exists()) {
+                throw new Error("Customer not found");
+            }
+            
+            let totalDueDifference = 0;
+
+            for (const billId of Object.keys(billsToPay)) {
+                const originalBill = bills.find(b => b.id === billId);
+                if (!originalBill) {
+                    console.warn(`Original bill with ID ${billId} not found in local state.`);
+                    continue;
+                }
+                const paidAmount = billsToPay[billId];
+                const dueDifference = originalBill.amount - paidAmount;
+                if (dueDifference > 0) {
+                    totalDueDifference += dueDifference;
+                }
+
                 const billRef = doc(db, 'users', userId, 'bills', billId);
                 batch.update(billRef, { status: BillStatus.PAID, paidDate: paymentData.date, paymentId: paymentRef.id });
-            });
+            }
+
+            if (totalDueDifference > 0) {
+                const currentOpeningDue = customerSnap.data().openingDue || 0;
+                const newOpeningDue = currentOpeningDue + totalDueDifference;
+                batch.update(customerRef, { openingDue: newOpeningDue });
+            }
+
             await batch.commit();
             return { success: true };
         } catch (error) {
             console.error("Error adding payment:", error);
             return { success: false, message: "Failed to add payment." };
         }
-    }, [userId]);
+    }, [userId, bills]);
 
     const getPaymentsByCustomerId = useCallback((customerId: string) => {
         return payments.filter(p => p.customerId === customerId).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
