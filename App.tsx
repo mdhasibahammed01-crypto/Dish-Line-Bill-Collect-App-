@@ -885,7 +885,9 @@ const CustomerDetailScreen: React.FC = () => {
                                <li key={bill.id} className="flex justify-between items-center p-2 rounded bg-gray-50 dark:bg-gray-700">
                                    <div>
                                        <span className="font-semibold">{getMonthName(bill.month)} {bill.year}</span>
-                                       <span className="ml-4">{bill.amount.toFixed(2)}</span>
+                                       <span className="ml-4">
+                                            {bill.status === BillStatus.PAID && typeof bill.paidAmount === 'number' ? bill.paidAmount.toFixed(2) : bill.amount.toFixed(2)}
+                                       </span>
                                        {bill.status === BillStatus.PAID && bill.paidDate && (
                                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                                                {t('paidOn')}: {new Date(bill.paidDate).toLocaleDateString(language)}

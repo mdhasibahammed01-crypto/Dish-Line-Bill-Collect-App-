@@ -460,7 +460,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const billsToUpdate = bills.filter(b => b.paymentId === paymentId);
             billsToUpdate.forEach(bill => {
                 const billRef = doc(db, 'users', userId, 'bills', bill.id);
-                batch.update(billRef, { status: BillStatus.UNPAID, paidDate: deleteField(), paymentId: deleteField() });
+                batch.update(billRef, { status: BillStatus.UNPAID, paidDate: deleteField(), paymentId: deleteField(), paidAmount: deleteField() });
             });
 
             batch.delete(paymentRef);
@@ -502,7 +502,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
 
                 const billRef = doc(db, 'users', userId, 'bills', billId);
-                batch.update(billRef, { status: BillStatus.PAID, paidDate: paymentData.date, paymentId: paymentRef.id });
+                batch.update(billRef, { status: BillStatus.PAID, paidDate: paymentData.date, paymentId: paymentRef.id, paidAmount: paidAmount });
             }
 
             if (totalDueDifference > 0) {

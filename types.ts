@@ -46,6 +46,7 @@ export interface Bill {
   dueDate: string; // ISO string date
   paidDate?: string; // ISO string date
   paymentId?: string;
+  paidAmount?: number;
 }
 
 
